@@ -1,0 +1,219 @@
+<html>
+<head></head>
+<body>
+<div>此题源于<a href="https://2017.megcup.com/problems/2#real=0.201703&imaginary=0.565656">2017megcup</a></div>
+<form id="settingsForm" action="javascript:draw();">
+    下面有一个Javascript程序，对于两个参数real和imaginary，会绘制出一幅Julia分形图像。
+    有几幅这个程序绘制出的png图像，请给出绘制它们所使用的参数。参数应当恰好有六位小数，且绝对值不超过2 。
+
+    你应当以这样的格式输出：输出文件包括7行，第1行对应我们给你的0.png，第2行对应我们给你的1.png，依次类推。每行包含两个小数，以一个空格隔开，是绘制这幅图所需的real和imaginary值。小数点前的0不可省略，小数点后需要有恰好六位。
+
+    <table>
+        <tr>
+            <td>Real</td>
+            <td>
+                <input class="textInput" size="12" type="text" id="real" value="0.201703"/>
+            </td>
+        </tr>
+        <tr>
+            <td>Imaginary</td>
+            <td>
+                <input class="textInput" size="12" type="text" id="imaginary" value="0.565656"/>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2"><input type="submit" id="submitButton" value="Draw"/>
+                &nbsp;
+                <input type="reset"
+                       style="border:1px solid #dddddd; box-sizing: border-box; cursor: pointer; line-height: 30px; padding: 0 40px; margin-top: 12px;"
+                       id="resetButton" value="Reset"/>
+                &nbsp;
+                <input type="button"
+                       style="border:1px solid #dddddd; box-sizing: border-box; cursor: pointer; line-height: 30px; padding: 0 40px; margin-top: 12px;"
+                       id="viewPNG" value="View as PNG"/>
+            </td>
+        </tr>
+    </table>
+</form>
+<div id="canvasContainer">
+    <canvas id="canvasJulia" width="640" height="480"></canvas>
+</div>
+<h2>求下列图片的参数</h2>
+<img src="ailuj/0.png">
+<img src="ailuj/1.png">
+<img src="ailuj/2.png">
+<img src="ailuj/3.png">
+<img src="ailuj/4.png">
+<img src="ailuj/5.png">
+<img src="ailuj/6.png">
+<div>
+    <p>这个问题其实就是在x属于[-2,2]，y属于[-2,2]正方形内寻找一个定点，解法就是网格搜索GridSeaarch</p>
+</div>
+<script type="text/javascript">
+    /*
+    * Just a shorthand function: Fetch given element, jQuery-style
+     */
+    function xqQuery(id) {
+        return document.getElementById(id);
+    }
+
+    var canvas = xqQuery('canvasJulia');
+    var ctx = canvas.getContext('2d');
+    var img = ctx.createImageData(canvas.width, canvas.height);
+    var interiorColorMap = [];
+    var tmp = 1.0;
+    for (var i = 0; i < 256; ++i) {
+        interiorColorMap.push(tmp);
+        tmp *= 7 / 8;
+    }
+
+    function iterateEquation(Cr, Ci, iterations, Dr, Di) {
+        var Zr = Cr;
+        var Zi = Ci;
+        var Tr = Cr * Cr;
+        var Ti = Ci * Ci;
+        var n = 0;
+        var L = Math.min(Tr, Ti);
+
+        for (; n < iterations && (Tr + Ti) <= 100; ++n) {
+            Zi = 2 * Zr * Zi + Di;
+            Zr = Tr - Ti + Dr;
+            Tr = Zr * Zr;
+            Ti = Zi * Zi;
+            if (Tr < L) {
+                L = Tr;
+            }
+            if (Ti < L) {
+                L = Ti;
+            }
+        }
+
+        /*
+         * Fractal exterior, color using escape time
+         */
+        if (Tr + Ti > 100) {
+            var v = n;
+            var e = (Tr + Ti) / 100;
+            if (e < 10) {
+                v -= (e - 1) / 18;
+            } else {
+                v -= 0.5 + (e - 10) / 180;
+            }
+            v = v / iterations;
+            v = 2 * v - v * v;
+            v = 2 * v - v * v;
+            return 255 - 255 * v;
+        }
+
+        /*
+         * Fractal interior, color using Pickover stalk
+         */
+        var v = 0;
+        var s = 128;
+        while (s >= 1) {
+            if (L < interiorColorMap[v + s]) {
+                v += s;
+            }
+            s /= 2;
+        }
+        return v;
+    }
+
+    /*
+     * Update URL's hash with render parameters so we can pass it around.
+     */
+    function updateHashTag() {
+        location.hash = 'real=' + xqQuery('real').value + '&' +
+            'imaginary=' + xqQuery('imaginary').value;
+    }
+
+    /*
+     * Parse URL hash tag, returns whether we should redraw.
+     */
+    function readHashTag() {
+        var tags = location.hash;
+        if (tags.length > 0 && tags[0] == '#') {
+            tags = tags.split('#')[1];
+        }
+        tags = tags.split('&');
+
+        for (var i = 0; i < tags.length; ++i) {
+            var tag = tags[i].split('=');
+            var key = tag[0];
+            var val = tag[1];
+
+            switch (key) {
+                case 'real': {
+                    xqQuery('real').value = String(parseFloat(val));
+                }
+                    break;
+                case 'imaginary': {
+                    xqQuery('imaginary').value = String(parseFloat(val));
+                }
+                    break;
+            }
+        }
+    }
+
+    /*
+     * Render the Julia set
+     */
+    function draw() {
+        var steps = 256;
+        var step = 3 / 512;
+
+        updateHashTag();
+
+        var Dr = parseFloat(xqQuery('real').value);
+        var Di = parseFloat(xqQuery('imaginary').value);
+        var off = 0;
+
+        for (sy = 0; sy < 480; ++sy) {
+            var Ci = (sy + 0.5 - 240) * step;
+            for (var sx = 0; sx < 640; ++sx) {
+                var Cr = (sx + 0.5 - 320) * step;
+                var v = 0;
+
+                for (var sr = -1; sr <= 1; ++sr) {
+                    for (var si = -1; si <= 1; ++si) {
+                        v += iterateEquation(Cr + sr * step / 4, Ci + si * step / 4, steps, Dr, Di);
+                    }
+                }
+
+                v = v / 9;
+                var C = Math.round(v)
+
+                img.data[off++] = C;
+                img.data[off++] = C;
+                img.data[off++] = 255;
+                img.data[off++] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    function main() {
+        xqQuery('viewPNG').onclick = function (event) {
+            window.location = canvas.toDataURL('image/png');
+        };
+
+        xqQuery('submitButton').onclick = function (event) {
+            draw();
+        };
+
+        xqQuery('resetButton').onclick = function (even) {
+            xqQuery('settingsForm').reset();
+            draw();
+        };
+
+        /*
+         * Read hash tag and render away at page load.
+         */
+        readHashTag();
+        draw();
+    }
+
+    main();
+</script>
+</body>
+</html>
